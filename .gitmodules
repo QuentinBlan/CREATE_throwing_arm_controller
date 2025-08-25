@@ -1,0 +1,3 @@
+[submodule "CREATE_motor_control"]
+	path = CREATE_motor_control
+	url = git@github.com:QuentinBlan/CREATE_motor_control.git
