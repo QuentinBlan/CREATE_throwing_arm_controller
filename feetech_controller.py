@@ -21,8 +21,13 @@ from scservo_sdk import GroupSyncWrite, GroupSyncRead, PortHandler
 from scservo_sdk.scservo_def import *
 from scservo_sdk.sms_sts import *
 
+import logging
+logger = logging.getLogger(__name__)
+
+
+
 class FeetechController:
-    def __init__(self, port_name: str = '/dev/ttyUSB0', baudrate: int = 1000000):
+    def __init__(self, port_name: str = '/dev/ttyUSB0', baudrate: int = 115200):
         """
         Initialize the Feetech controller
         
@@ -116,22 +121,22 @@ class FeetechController:
             
             # Open port
             if not self.portHandler.openPort():
-                print(f"Failed to open port {self.port_name}")
+                logger.warning("Failed to open port %s", self.port_name)
                 return False
             
             # Set baudrate
             if not self.portHandler.setBaudRate(self.baudrate):
-                print(f"Failed to set baudrate to {self.baudrate}")
+                logger.warning("Failed to set baudrate to %d", self.baudrate)
                 self.portHandler.closePort()
                 return False
             
 
             
-            self.connected = True
+            self.connected = True     
             return True
             
         except Exception as e:
-            print(f"Connection failed: {e}")
+            logger.error("Connection failed: %s", e)
             return False
     
     def disconnect(self):
@@ -148,23 +153,23 @@ class FeetechController:
             List of found servo IDs
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return []
         
-        print(f"Scanning for servos from ID 0 to 30...")
+        logger.info("Scanning for servos from ID 0 to 30...")
         found_servos = []
         
         for servo_id in range(0, 31):
             scs_model_number, scs_comm_result, scs_error = self.packetHandler.ping(servo_id)
             
             if scs_comm_result == COMM_SUCCESS:
-                print(f"[ID:{servo_id:03d}] Found servo. Model: {scs_model_number}")
+                logger.info("Found servo ID %d, Model %d", servo_id, scs_model_number)
                 found_servos.append(servo_id)
             elif scs_error != 0:
-                print(f"[ID:{servo_id:03d}] Error: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error("Error pinging servo ID %d: %s", servo_id, self.packetHandler.getRxPacketError(scs_error))
         
         self.found_servos = found_servos
-        print(f"Found {len(found_servos)} servo(s): {found_servos}")
+        logger.info(f"Found {len(found_servos)} servo(s): {found_servos}")
         return found_servos
     
     def change_id(self, current_id: int, new_id: int) -> bool:
@@ -179,31 +184,31 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         if new_id < 0 or new_id > 253:
-            print("Invalid new ID. Must be between 0 and 253.")
+            logger.error("Invalid new ID. Must be between 0 and 253.")
             return False
         
-        print(f"Changing servo ID from {current_id} to {new_id}...")
+        logger.info(f"Changing servo ID from {current_id} to {new_id}...")
         
         # Step 1: Unlock EEPROM
         scs_comm_result, scs_error = self.packetHandler.unLockEprom(current_id)
         if scs_comm_result != COMM_SUCCESS:
-            print(f"Failed to unlock EEPROM: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+            logger.error(f"Failed to unlock EEPROM: {self.packetHandler.getTxRxResult(scs_comm_result)}")
             return False
         
         # Step 2: Write new ID
         scs_comm_result, scs_error = self.packetHandler.write1ByteTxRx(current_id, SMS_STS_ID, new_id)
         if scs_comm_result != COMM_SUCCESS:
-            print(f"Failed to write new ID: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+            logger.error(f"Failed to write new ID: {self.packetHandler.getTxRxResult(scs_comm_result)}")
             return False
         
         # Step 3: Lock EEPROM
         scs_comm_result, scs_error = self.packetHandler.LockEprom(new_id)
         if scs_comm_result != COMM_SUCCESS:
-            print(f"Failed to lock EEPROM: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+            logger.error(f"Failed to lock EEPROM: {self.packetHandler.getTxRxResult(scs_comm_result)}")
             return False
         
         # Step 4: Verify the change
@@ -216,7 +221,7 @@ class FeetechController:
             self.found_servos.append(new_id)
             return True
         else:
-            print(f"Failed to verify ID change")
+            logger.error(f"Failed to verify ID change")
             return False
     
     def set_zero_offset(self, servo_id, offset: int = 1024) -> bool:
@@ -231,7 +236,7 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         # Handle single ID or list of IDs
@@ -244,11 +249,11 @@ class FeetechController:
         for sid in servo_ids:
             scs_comm_result, scs_error = self.packetHandler.reOfsCal(sid, offset)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to set zero offset for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to set zero offset for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
             elif scs_error != 0:
-                print(f"Error setting zero offset for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error setting zero offset for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
             else:
-                print(f"[ID:{sid:03d}] Zero offset calibration succeeded with offset {offset}")
+                logger.info(f"[ID:{sid:03d}] Zero offset calibration succeeded with offset {offset}")
                 success_count += 1
         
         return success_count == len(servo_ids)
@@ -269,11 +274,11 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         if mode < 0 or mode > 3:
-            print("Invalid mode. Must be between 0 and 3.")
+            logger.error("Invalid mode. Must be between 0 and 3.")
             return False
         
         mode_names = {
@@ -295,10 +300,10 @@ class FeetechController:
             sid = servo_ids[0]
             scs_comm_result, scs_error = self.packetHandler.write1ByteTxRx(sid, SMS_STS_MODE, mode)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to change mode for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to change mode for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return False
             elif scs_error != 0:
-                print(f"Error changing mode for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error changing mode for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return False
             else:
                 return True
@@ -313,13 +318,13 @@ class FeetechController:
                 for sid in servo_id:
                     result = groupSyncWrite.addParam(sid, [mode])
                     if not result:
-                        print(f"Failed to add parameter for servo {sid}")
+                        logger.error(f"Failed to add parameter for servo {sid}")
                         return False
             
             # Execute sync write
             comm_result = groupSyncWrite.txPacket()
             if comm_result != COMM_SUCCESS:
-                print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+                logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
                 return False
             
             return True
@@ -336,7 +341,7 @@ class FeetechController:
             For multiple servos: Dictionary mapping servo ID to mode, or None if failed
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return None
         
         mode_names = {
@@ -358,10 +363,10 @@ class FeetechController:
             sid = servo_ids[0]
             mode, scs_comm_result, scs_error = self.packetHandler.read1ByteTxRx(sid, SMS_STS_MODE)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to read mode for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to read mode for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return None
             elif scs_error != 0:
-                print(f"Error reading mode for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error reading mode for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return None
             else:
                 return mode
@@ -382,7 +387,7 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         # Handle single ID or list of IDs
@@ -391,10 +396,10 @@ class FeetechController:
             sid = servo_id
             scs_comm_result, scs_error = self.packetHandler.write1ByteTxRx(sid, SMS_STS_TORQUE_ENABLE, 1)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to enable torque for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to enable torque for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return False
             elif scs_error != 0:
-                print(f"Error enabling torque for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error enabling torque for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return False
             else:
                 return True
@@ -409,13 +414,13 @@ class FeetechController:
                 for sid in servo_id:
                     result = groupSyncWrite.addParam(sid, [1])
                     if not result:
-                        print(f"Failed to add parameter for servo {sid}")
+                        logger.error(f"Failed to add parameter for servo {sid}")
                         return False
             
             # Execute sync write
             comm_result = groupSyncWrite.txPacket()
             if comm_result != COMM_SUCCESS:
-                print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+                logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
                 return False
             
             return True
@@ -431,7 +436,7 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         # Handle single ID or list of IDs
@@ -440,10 +445,10 @@ class FeetechController:
             sid = servo_id
             scs_comm_result, scs_error = self.packetHandler.write1ByteTxRx(sid, SMS_STS_TORQUE_ENABLE, 0)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to disable torque for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to disable torque for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return False
             elif scs_error != 0:
-                print(f"Error disabling torque for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error disabling torque for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return False
             else:
                 return True
@@ -458,13 +463,13 @@ class FeetechController:
                 for sid in servo_id:
                     result = groupSyncWrite.addParam(sid, [0])
                     if not result:
-                        print(f"Failed to add parameter for servo {sid}")
+                        logger.error(f"Failed to add parameter for servo {sid}")
                         return False
             
             # Execute sync write
             comm_result = groupSyncWrite.txPacket()
             if comm_result != COMM_SUCCESS:
-                print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+                logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
                 return False
             
             return True
@@ -482,11 +487,11 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         if acceleration < 0 or acceleration > 254:
-            print("Invalid acceleration. Must be between 0 and 254.")
+            logger.error("Invalid acceleration. Must be between 0 and 254.")
             return False
         
         # Handle single ID or list of IDs
@@ -501,10 +506,10 @@ class FeetechController:
             sid = servo_ids[0]
             scs_comm_result, scs_error = self.packetHandler.write1ByteTxRx(sid, SMS_STS_ACC, acceleration)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to set acceleration for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to set acceleration for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return False
             elif scs_error != 0:
-                print(f"Error setting acceleration for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error setting acceleration for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return False
             else:
                 return True
@@ -519,35 +524,35 @@ class FeetechController:
                 for sid in servo_ids:
                     result = groupSyncWrite.addParam(sid, [acceleration])
                     if not result:
-                        print(f"Failed to add parameter for servo {sid}")
+                        logger.error(f"Failed to add parameter for servo {sid}")
                         return False
             
             # Execute sync write
             comm_result = groupSyncWrite.txPacket()
             if comm_result != COMM_SUCCESS:
-                print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+                logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
                 return False
             
             return True
     
-    def set_position(self, servo_id, position: int) -> bool:
+    def set_position(self, servo_id, position: int, multi_turn_enable : bool = False) -> bool:
         """
         Set target position for a servo
         
         Args:
             servo_id: ID of the servo (int) or list of servo IDs
-            position: Target position (0-4095 for full rotation)
+            position: Target position (0-4095 for full rotation (no limitation if multi-turn enabled))
                      Unit: 0.087890625 degrees per unit (360°/4096)
             
         Returns:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
-        if position < 0 or position > 4095:
-            print("Invalid position. Must be between 0 and 4095 for full rotation.")
+        if (position < 0 or position > 4095) and not multi_turn_enable:
+            logger.error("Invalid position. Must be between 0 and 4095 for full rotation.")
             return False
         
         # Handle single ID or list of IDs
@@ -562,12 +567,13 @@ class FeetechController:
             sid = servo_ids[0]
             scs_comm_result, scs_error = self.packetHandler.write2ByteTxRx(sid, SMS_STS_GOAL_POSITION_L, position)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to set position for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to set position for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return False
             elif scs_error != 0:
-                print(f"Error setting position for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error setting position for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return False
             else:
+                logger.info(f"Set position of servo {sid} to {position}")
                 return True
         else:
             # Multiple servos - use sync write
@@ -583,15 +589,15 @@ class FeetechController:
                     pos_bytes = [self.packetHandler.scs_lobyte(servo_value), self.packetHandler.scs_hibyte(servo_value)]
                     result = groupSyncWrite.addParam(sid, pos_bytes)
                     if not result:
-                        print(f"Failed to add parameter for servo {sid}")
+                        logger.error(f"Failed to add parameter for servo {sid}")
                         return False
             
             # Execute sync write
             comm_result = groupSyncWrite.txPacket()
             if comm_result != COMM_SUCCESS:
-                print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+                logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
                 return False
-            
+            logger.info(f"Set position of servos {servo_ids} to {position}")
             return True
     
     
@@ -604,13 +610,13 @@ class FeetechController:
             speed: Running speed value(s)
                    - Single int: Same speed for all servos (-32767 to 32767)
                    - List of ints: Individual speed for each servo
-                   Unit: 0.732 RPM
+                   50 =  0.732 RPM
         
         Returns:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         # Handle single ID or list of IDs
@@ -627,7 +633,7 @@ class FeetechController:
             # List of speed values for each servo
             speed_values = speed
         else:
-            print("Invalid speed input. Must be single int or list matching servo count.")
+            logger.error("Invalid speed input. Must be single int or list matching servo count.")
             return False
         
         # Convert negative values: convert to abs(value) + 32768
@@ -645,10 +651,10 @@ class FeetechController:
             converted_speed = converted_speed_values[0]
             scs_comm_result, scs_error = self.packetHandler.write2ByteTxRx(sid, SMS_STS_GOAL_SPEED_L, converted_speed)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to set speed for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to set speed for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return False
             elif scs_error != 0:
-                print(f"Error setting speed for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error setting speed for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return False
             else:
                 return True
@@ -671,13 +677,13 @@ class FeetechController:
                         speed_bytes = [self.packetHandler.scs_lobyte(servo_value), self.packetHandler.scs_hibyte(servo_value)]
                         result = groupSyncWrite.addParam(sid, speed_bytes)
                         if not result:
-                            print(f"Failed to add parameter for servo {sid}")
+                            logger.error(f"Failed to add parameter for servo {sid}")
                             return False
                 
                 # Execute sync write
                 comm_result = groupSyncWrite.txPacket()
                 if comm_result != COMM_SUCCESS:
-                    print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+                    logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
                     return False
             else:
                 # Different speed values for different servos - use individual writes
@@ -685,10 +691,10 @@ class FeetechController:
                     converted_speed = converted_speed_values[i]
                     scs_comm_result, scs_error = self.packetHandler.write2ByteTxRx(sid, SMS_STS_GOAL_SPEED_L, converted_speed)
                     if scs_comm_result != COMM_SUCCESS:
-                        print(f"Failed to set speed for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                        logger.error(f"Failed to set speed for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                         return False
                     elif scs_error != 0:
-                        print(f"Error setting speed for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                        logger.error(f"Error setting speed for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                         return False
             
             return True
@@ -706,11 +712,11 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         if torque_limit < 0 or torque_limit > 1000:
-            print("Invalid torque limit. Must be between 0 and 1000.")
+            logger.error("Invalid torque limit. Must be between 0 and 1000.")
             return False
         
         # Handle single ID or list of IDs
@@ -725,10 +731,10 @@ class FeetechController:
             sid = servo_ids[0]
             scs_comm_result, scs_error = self.packetHandler.write2ByteTxRx(sid, 48, torque_limit)
             if scs_comm_result != COMM_SUCCESS:
-                print(f"Failed to set torque limit for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+                logger.error(f"Failed to set torque limit for servo {sid}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
                 return False
             elif scs_error != 0:
-                print(f"Error setting torque limit for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
+                logger.error(f"Error setting torque limit for servo {sid}: {self.packetHandler.getRxPacketError(scs_error)}")
                 return False
             else:
                 return True
@@ -746,13 +752,13 @@ class FeetechController:
                     limit_bytes = [self.packetHandler.scs_lobyte(servo_value), self.packetHandler.scs_hibyte(servo_value)]
                     result = groupSyncWrite.addParam(sid, limit_bytes)
                     if not result:
-                        print(f"Failed to add parameter for servo {sid}")
+                        logger.error(f"Failed to add parameter for servo {sid}")
                         return False
             
             # Execute sync write
             comm_result = groupSyncWrite.txPacket()
             if comm_result != COMM_SUCCESS:
-                print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+                logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
                 return False
             
             return True
@@ -784,7 +790,7 @@ class FeetechController:
             Dictionary mapping servo ID to read data
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return {}
         
         if not servo_ids:
@@ -797,12 +803,12 @@ class FeetechController:
         for servo_id in servo_ids:
             result = groupSyncRead.addParam(servo_id)
             if not result:
-                print(f"Failed to add parameter for servo {servo_id}")
+                logger.error(f"Failed to add parameter for servo {servo_id}")
         
         # Execute sync read
         comm_result = groupSyncRead.txRxPacket()
         if comm_result != COMM_SUCCESS:
-            print(f"Sync read failed: {self.packetHandler.getTxRxResult(comm_result)}")
+            logger.error(f"Sync read failed: {self.packetHandler.getTxRxResult(comm_result)}")
             return {}
         
         # Process results
@@ -840,9 +846,9 @@ class FeetechController:
                             values.append(value)
                     results[servo_id] = values
             else:
-                print(f"Failed to read data from servo {servo_id}")
+                logger.error(f"Failed to read data from servo {servo_id}")
                 if error != 0:
-                    print(f"   Error: {self.packetHandler.getRxPacketError(error)}")
+                    logger.error(f"   Error: {self.packetHandler.getRxPacketError(error)}")
         
         return results
     
@@ -861,7 +867,7 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         if not servo_positions:
@@ -874,13 +880,13 @@ class FeetechController:
         for servo_id, position in servo_positions.items():
             result = self.packetHandler.SyncWritePosEx(servo_id, position, speed, acc, torque)
             if not result:
-                print(f"Failed to add parameter for servo {servo_id}")
+                logger.error(f"Failed to add parameter for servo {servo_id}")
                 return False
         
         # Execute sync write
         comm_result = self.packetHandler.groupSyncWrite.txPacket()
         if comm_result != COMM_SUCCESS:
-            print(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
+            logger.error(f"Sync write failed: {self.packetHandler.getTxRxResult(comm_result)}")
             return False
         
         return True
@@ -901,15 +907,15 @@ class FeetechController:
             True if successful, False otherwise
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return False
         
         scs_comm_result, scs_error = self.packetHandler.WritePosEx(servo_id, position, speed, acc, torque)
         if scs_comm_result != COMM_SUCCESS:
-            print(f"Failed to write position to servo {servo_id}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
+            logger.error(f"Failed to write position to servo {servo_id}: {self.packetHandler.getTxRxResult(scs_comm_result)}")
             return False
         elif scs_error != 0:
-            print(f"Error writing to servo {servo_id}: {self.packetHandler.getRxPacketError(scs_error)}")
+            logger.error(f"Error writing to servo {servo_id}: {self.packetHandler.getRxPacketError(scs_error)}")
             return False
         
         return True
@@ -926,7 +932,7 @@ class FeetechController:
             For multiple servos: Dictionary mapping servo ID to (position, speed) tuple, or None if failed
         """
         if not self.connected:
-            print("Not connected. Call connect() first.")
+            logger.error("Not connected. Call connect() first.")
             return None
         
         # Handle single ID or list of IDs
@@ -936,10 +942,10 @@ class FeetechController:
 
             position, speed, comm_result, error = self.packetHandler.ReadPosSpeed(sid)
             if comm_result != COMM_SUCCESS:
-                print(f"Failed to read from servo {sid}: {self.packetHandler.getTxRxResult(comm_result)}")
+                logger.error(f"Failed to read from servo {sid}: {self.packetHandler.getTxRxResult(comm_result)}")
                 return None
             elif error != 0:
-                print(f"Error reading from servo {sid}: {self.packetHandler.getRxPacketError(error)}")
+                logger.error(f"Error reading from servo {sid}: {self.packetHandler.getRxPacketError(error)}")
                 return None
             
             return (position, speed)
@@ -962,9 +968,10 @@ class FeetechController:
 if __name__ == "__main__":
     # Example usage
     controller = FeetechController(port_name='/dev/ttyUSB0', baudrate=115200)
-    controller.ping_servos()
 
     if controller.connect():
+
+        controller.ping_servos()
 
         controller.print_status()
     
