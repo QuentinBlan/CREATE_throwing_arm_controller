@@ -21,6 +21,7 @@ HO_DEFAULT_SPEED = HO_DEFAULT_SPEED_RPM * RPM_TO_RAD_PER_SEC
 # Feetech speeds in steps/s
 FT_PULLBACK_SPEED = 1000  
 FT_UNWIND_SPEED = 2000
+FT_MAX_PULLBACK = 3500  # Max pullback position in steps
 
 
 class ThrowingArmController:
@@ -187,21 +188,32 @@ class ThrowingArmController:
 
         return (posh1 - self.home_position_ho[1], posh2 - self.home_position_ho[2], posh3 - self.home_position_ho[3])
 
-    def throwing(self, current = 0.5, end_position = 0, stop_pos = 150, throwback_pos = 100, ahead_pos = -100, init_position = 3000, direction = 0, release_pos=0, throw_speed_percent = 50, throwing_time = 0.4, unwind_time = 2.0):
+    def throwing(self, stop_pos = 150, ahead_pos = -100, throwback_pos = 100, init_position = 3000, end_position = 0, direction = 0):
         """ 
-            throw_speed in percentage of the maximum allowed speed
+            stop_pos: HO 1 and 3 stop position in degrees (between 0 and 200)
+            ahead_pos: HO 2 position before flinging (between 0 and -200)
+            throwback_pos: HO 2 final position after flinging (between 0 and 200)
+            init_position: Feetech initial position in steps (4096 for a full rotation)
+            end_position: Feetech position after unwinding in steps (4096 for a full roatation)
             direction: not used yet
-            end_position: Feetech end position in ticks
-            init_position: Feetech initial position in ticks
-            stop_pos: HO8110 motor 2 stop position in degrees
-            release_pos: HO8110 motor 1 release position in degrees
-            prep_time: time to wait after pulling back before throwing
-            unwind_time: time to wait after pulling back before throwing
+            throwing_time: timing between the throw and the HO2 
         """
-        if throw_speed_percent > 100 or throw_speed_percent < 0:
-            raise ValueError("throw_speed must be between 0 and 100")
-        
-        ho_speed = (throw_speed_percent / 100) * HO_MAX_SPEED
+        #verify stop_pos
+        if stop_pos < 0 or stop_pos > 200:
+            logger.error("stop_pos must be between 0 and 200 degrees")
+            return
+        if ahead_pos > 0 or ahead_pos < -200:
+            logger.error("ahead_pos must be between 0 and -200 degrees")
+            return
+        if throwback_pos < 0 or throwback_pos > 200:
+            logger.error("throwback_pos must be between 0 and 200 degrees")
+            return
+        if init_position < 0 or init_position > FT_MAX_PULLBACK:
+            logger.error(f"init_position must be between 0 and {FT_MAX_PULLBACK}")
+            return
+        if end_position < 0 or end_position > init_position:
+            logger.error(f"end_position must be between 0 and {init_position}")
+            return
   
         self.ho.broadcast_enable(enable=False)
 
@@ -247,26 +259,23 @@ class ThrowingArmController:
         self.feetech.set_speed(1, FT_PULLBACK_SPEED)
         self.feetech.set_speed(2, FT_PULLBACK_SPEED)
         self.set_feetech_position(end_position, end_position)
-        time.sleep(unwind_time)
+        time.sleep(2)
 
         #6 HO 1 and 3 throw / 2 follows
         self.ho.batch_position({1 : stop_pos, 2 : ahead_pos, 3 : stop_pos}, max_speed = 90)
 
-        time.sleep(throwing_time)
-
-        '''pos = stop_pos + 100 #we don't talk about that one
+        pos = 100 #we don't talk about that one
         timeout = 0
-        while pos >= stop_pos + 5:
-            time.sleep(0.01)
-            print("wait")
-            pos = self.ho.get_feedback(1)[0]
+        while pos > ahead_pos + 5:
+            time.sleep(0.001)
+            pos = self.ho.get_feedback(2)[0]
             timeout += 1
-            if timeout > 100:
+            if timeout > 700:
                 logger.error("Timeout waiting for end of throw")
                 self.stop()
                 break
             
-        print(pos)'''
+        print(pos)
 
         #7 HO 2 flings back
         self.ho.set_position(2, throwback_pos , max_speed = 90, max_current = 6)

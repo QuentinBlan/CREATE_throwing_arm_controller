@@ -32,11 +32,11 @@ def main():
                 print_status(arm_controller)
             else:
                 #x = int(input("init pos (ho) = ") or 3000)
-                x = float(input("time in s") or 0.5)
+                #x = float(input("time in s") or 0.5)
                 #y = int(input("end position (ft)= ") or 1500)
                 #z = int(input("end position (ho) = ") or 100)
                 #arm_controller.throwing(init_position=x, end_position=y, stop_pos=z)
-                arm_controller.throwing(throwing_time=x)
+                arm_controller.throwing()
                 print_status(arm_controller)
     except KeyboardInterrupt:
         print("Exiting throwing loop.")
