@@ -68,6 +68,12 @@ def main() -> bool:
                     feetech.set_position(2, pos, multi_turn_enable=True)
                     loop_counter_1 = pos // ROT_STEPS
                     print(f"Loop counter 1: {loop_counter_1}")
+
+                    timeout = 0
+                    while timeout < 20:
+                        timeout += 1
+                        print_posspeeds(feetech)
+                        time.sleep(0.1)
                     
                     
             except KeyboardInterrupt:
@@ -103,6 +109,7 @@ def main() -> bool:
     except KeyboardInterrupt:
         print("\nLoop stopped by user.")
 
+    feetech.disable_torque([1,2])
     feetech.disconnect()
     print("Feetech controller test completed")
     return True
