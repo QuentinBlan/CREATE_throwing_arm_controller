@@ -16,22 +16,28 @@ def main():
     except Exception as e:
         print(f"Failed to initialize ArmController: {e}")
         return
-    
-    time.sleep(1)
 
-    print_status(arm_controller)
 
     input("Press ENTER to start homing...")
     arm_controller.set_home()
-    time.sleep(1)
+    time.sleep(1) #is necessary ?
     print_status(arm_controller)
     
     try:
         while True:
-            input("Press ENTER to continue to throw or ctrl c to quit...")
-            x = int(input("x = ") or 0)
-            arm_controller.throwing(direction=x)
-            print_status(arm_controller)
+            y = input("Press ENTER to continue to throw or ctrl c to quit or h to home...")
+            if y.lower() == 'h':
+                arm_controller.set_home()
+                time.sleep(1)
+                print_status(arm_controller)
+            else:
+                #x = int(input("init pos (ho) = ") or 3000)
+                x = float(input("time in s") or 0.5)
+                #y = int(input("end position (ft)= ") or 1500)
+                #z = int(input("end position (ho) = ") or 100)
+                #arm_controller.throwing(init_position=x, end_position=y, stop_pos=z)
+                arm_controller.throwing(throwing_time=x)
+                print_status(arm_controller)
     except KeyboardInterrupt:
         print("Exiting throwing loop.")
     
